@@ -436,7 +436,7 @@ public abstract class GLMTask  {
           }
         } else {
           c.getIntegers(ids, 0, c._len,-1);
-          for(int i = 0; i < ids.length; ++i){
+          for(int i = 0; i < ids.length; ++i){  // loop here is necessary because one enum read expands to all enum levels for beta
             int id = _dinfo.getCategoricalId(cid,ids[i]);
             if(id >=0) etas[i] += _beta[id];
           }
@@ -463,58 +463,64 @@ public abstract class GLMTask  {
         }
       }
     }
-
+    // note etas, vals contains a whole column of the chunk
     private final void computeNumericEtas(Chunk [] chks, double [] etas, double [] vals, int [] ids) {
-      int numOff = _dinfo.numStart();
-      for(int cid = 0; cid < _dinfo._nums; ++cid){
-        double scale = _dinfo._normMul != null?_dinfo._normMul[cid]:1;
-        double off = _dinfo._normSub != null?_dinfo._normSub[cid]:0;
-        double NA = _dinfo._numNAFill[cid];
-        Chunk c = chks[cid+_dinfo._cats];
-        double b = scale*_beta[numOff+cid];
-        if(c.isSparseZero()){
-          int nvals = c.getSparseDoubles(vals,ids,NA);
-          for(int i = 0; i < nvals; ++i)
-            etas[ids[i]] += vals[i] * b;
-        } else if(c.isSparseNA()){
-          int nvals = c.getSparseDoubles(vals,ids,NA);
-          for(int i = 0; i < nvals; ++i)
-            etas[ids[i]] += (vals[i] - off) * b;
-        } else {
-          c.getDoubles(vals,0,vals.length,NA);
-          for(int i = 0; i < vals.length; ++i)
-            etas[i] += (vals[i] - off) * b;
+      if (_dinfo._nums > 0) { // only do anything if there are numerical columns
+        int numOff = _dinfo.numStart();
+        int trueNumcols = _dinfo._adaptedFrame.numCols()-_dinfo._cats;
+        for (int cid = 0; cid < trueNumcols; ++cid) {  // already taken care of expanding interaction column from enum x num
+          double scale = _dinfo._normMul != null ? _dinfo._normMul[cid] : 1;
+          double off = _dinfo._normSub != null ? _dinfo._normSub[cid] : 0;
+          double NA = _dinfo._numNAFill[cid];
+          Chunk c = chks[cid + _dinfo._cats];
+          double b = scale * _beta[numOff + cid];
+          if (c.isSparseZero()) {
+            int nvals = c.getSparseDoubles(vals, ids, NA);
+            for (int i = 0; i < nvals; ++i)
+              etas[ids[i]] += vals[i] * b;
+          } else if (c.isSparseNA()) {
+            int nvals = c.getSparseDoubles(vals, ids, NA);
+            for (int i = 0; i < nvals; ++i)
+              etas[ids[i]] += (vals[i] - off) * b;
+          } else { 
+            c.getDoubles(vals, 0, vals.length, NA);
+            for(int i = 0; i < vals.length; ++i)  // add contribution for all rows of a numeric column from the chunk
+              etas[i] += (vals[i] - off) * b;
+          }
         }
       }
     }
 
     private final void computeNumericGrads(Chunk [] chks, double [] etas, double [] vals, int [] ids) {
-      int numOff = _dinfo.numStart();
-      for(int cid = 0; cid < _dinfo._nums; ++cid){
-        double NA = _dinfo._numNAFill[cid];
-        Chunk c = chks[cid+_dinfo._cats];
-        double scale = _dinfo._normMul == null?1:_dinfo._normMul[cid];
-        double offset = _dinfo._normSub == null?0:_dinfo._normSub[cid];
-        if(c.isSparseZero()){
-          double g = 0;
-          int nVals = c.getSparseDoubles(vals,ids,NA);
-          for(int i = 0; i < nVals; ++i)
-            g += (vals[i]-offset)*scale*etas[ids[i]];
-          _gradient[numOff+cid] = g;
-        } else if(c.isSparseNA()){
-          double off = _dinfo._normSub == null?0:_dinfo._normSub[cid];
-          double g = 0;
-          int nVals = c.getSparseDoubles(vals,ids,NA);
-          for(int i = 0; i < nVals; ++i)
-            g += (vals[i]-off)*scale*etas[ids[i]];
-          _gradient[numOff+cid] = g;
-        } else {
-          double off = _dinfo._normSub == null?0:_dinfo._normSub[cid];
-          c.getDoubles(vals,0,vals.length,NA);
-          double g = 0;
-          for(int i = 0; i < vals.length; ++i)
-            g += (vals[i]-off)*scale*etas[i];
-          _gradient[numOff+cid] = g;
+      if (_dinfo._nums > 0) {
+        int numOff = _dinfo.numStart(); // index into expanded cols
+        int trueNumCols = _dinfo._adaptedFrame.numCols()-_dinfo._cats;
+        for (int cid = 0; cid < trueNumCols; ++cid) { // go through all numeric columns expanded with enum x num interaction
+          double NA = _dinfo._numNAFill[cid];
+          Chunk c = chks[cid + _dinfo._cats];
+          double scale = _dinfo._normMul == null ? 1 : _dinfo._normMul[cid];
+          double offset = _dinfo._normSub == null ? 0 : _dinfo._normSub[cid];
+          if (c.isSparseZero()) {
+            double g = 0;
+            int nVals = c.getSparseDoubles(vals, ids, NA);
+            for (int i = 0; i < nVals; ++i)
+              g += (vals[i] - offset) * scale * etas[ids[i]];
+            _gradient[numOff + cid] = g;
+          } else if (c.isSparseNA()) {
+            double off = _dinfo._normSub == null ? 0 : _dinfo._normSub[cid];
+            double g = 0;
+            int nVals = c.getSparseDoubles(vals, ids, NA);
+            for (int i = 0; i < nVals; ++i)
+              g += (vals[i] - off) * scale * etas[ids[i]];
+            _gradient[numOff + cid] = g;
+          } else {
+            double off = _dinfo._normSub == null ? 0 : _dinfo._normSub[cid];
+            c.getDoubles(vals, 0, vals.length, NA);
+            double g = 0;
+            for (int i = 0; i < vals.length; ++i)
+              g += (vals[i] - off) * scale * etas[i];
+            _gradient[numOff + cid] = g;
+          }
         }
       }
     }
@@ -534,12 +540,12 @@ public abstract class GLMTask  {
         for(int i = 0; i < _dinfo._nums; ++i)
           if(chks[_dinfo._cats + i].isSparseZero())
             sparseOffset -= _beta[numStart + i]*_dinfo._normSub[i]*_dinfo._normMul[i];
-      ArrayUtils.add(etas,sparseOffset + _beta[_beta.length-1]);
+      ArrayUtils.add(etas,sparseOffset + _beta[_beta.length-1]);  // add intercept into etas already here
       double [] vals = MemoryManager.malloc8d(response._len);
       int [] ids = MemoryManager.malloc4(response._len);
-      computeCategoricalEtas(chks,etas,vals,ids);
+      computeCategoricalEtas(chks,etas,vals,ids); // calculate eta = transpose(beta)*x+beta0
       computeNumericEtas(chks,etas,vals,ids);
-      computeGradientMultipliers(etas,ys,ws);
+      computeGradientMultipliers(etas,ys,ws); // ys is true response.  es now contains (yi-ym)*weight for binomials
       // walk the chunks again, add to the gradient
       computeCategoricalGrads(chks,etas,vals,ids);
       computeNumericGrads(chks,etas,vals,ids);

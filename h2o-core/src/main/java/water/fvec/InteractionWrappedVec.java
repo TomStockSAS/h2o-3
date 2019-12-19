@@ -99,7 +99,7 @@ public class InteractionWrappedVec extends WrappedVec {
   private static class GetMeanTask extends MRTask<GetMeanTask> {
     private double[] _d;     // means, NA skipped
     private double[] _sigma; // sds, NA skipped
-    private long _rows;
+    private long[] _rows;   // row count, NA skipped
 
     private final int _len;
     GetMeanTask(int len) { _len=len; }
@@ -107,37 +107,38 @@ public class InteractionWrappedVec extends WrappedVec {
     @Override public void map(Chunk c) {
       _d = new double[_len];
       _sigma = new double[_len];
+      _rows = new long[_len];
       InteractionWrappedChunk cc = (InteractionWrappedChunk)c;
       Chunk lC = cc._c[0]; Chunk rC = cc._c[1];  // get the "left" chk and the "rite" chk
       if( cc._c2IsCat ) { lC=rC; rC=cc._c[0]; }  // left is always cat
-      long rows=0;
       for(int rid=0;rid<c._len;++rid) {
         if( lC.isNA(rid) || rC.isNA(rid) ) continue; // skipmissing
         int idx = (int)lC.at8(rid);
-        rows++;
-        for(int i=0;i<_d.length;++i) {
-          double x = i==idx?rC.atd(rid):0;
-          double delta = x - _d[i];
-          _d[i] += delta / rows;
-          _sigma[i] += delta * (x - _d[i]);
-        }
+        _rows[idx] += 1;
+        double x = rC.atd(rid);
+        _d[idx] += x;
+        _sigma[idx] += x*x;
       }
-      _rows=rows;
     }
     @Override public void reduce(GetMeanTask t) {
-      if (_rows == 0) { _d = t._d;  _sigma = t._sigma; }
-      else if(t._rows != 0){
-        for(int i=0;i<_d.length;++i) {
-          double delta = _d[i] - t._d[i];
-          _d[i] = (_d[i]* _rows + t._d[i] * t._rows) / (_rows + t._rows);
-          _sigma[i] += t._sigma[i] + delta * delta * _rows * t._rows / (_rows + t._rows);
-        }
+      int enumLen = _rows.length;
+      for (int ind = 0; ind < enumLen; ind++) {
+        _rows[ind] += t._rows[ind];
+        _d[ind] += t._d[ind];
+        _sigma[ind] += t._sigma[ind];
       }
-      _rows += t._rows;
     }
     @Override public void postGlobal() {
-      for(int i=0;i<_sigma.length;++i )
-        _sigma[i] = Math.sqrt(_sigma[i]/(_rows-1));
+      int enumLen = _rows.length;
+      for (int i=0; i < enumLen; i++) {
+        if (_rows[i] == 1) {
+          _sigma[i] = 0;  // zero std for one element
+        }
+        if (_rows[i] > 1) {
+          _sigma[i] = Math.sqrt((_sigma[i]+_d[i]*_d[i])/(_rows[i]-1));
+          _d[i] = _d[i]/_rows[i];
+        }
+      }
     }
   }
 

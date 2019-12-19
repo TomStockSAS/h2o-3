@@ -1,7 +1,10 @@
 package hex;
 
 import water.*;
-import water.fvec.*;
+import water.fvec.Chunk;
+import water.fvec.Frame;
+import water.fvec.InteractionWrappedVec;
+import water.fvec.Vec;
 import water.util.ArrayUtils;
 
 import java.util.ArrayList;
@@ -298,7 +301,7 @@ public class DataInfo extends Keyed<DataInfo> {
     }
     _numMeans = new double[numNums()];
     _numNAFill = new double[numNums()];
-    int numIdx=0;
+    int numIdx=0; // index into the _numMeans
     for(int i=0;i<nnums;++i) {
       String name = train.name(nums[i]);
       Vec v = train.vec(nums[i]);
@@ -499,34 +502,49 @@ public class DataInfo extends Keyed<DataInfo> {
       catLvls = cs;
     }
 
-    // now do the interaction vecs -- these happen to always sit first in the "nums" section of _adaptedFrame
-    // also, these have the exact same filtering logic as the categoricals above
+    // now do the interaction vecs -- this happens to always sit first in the "nums" section of _adaptedFrame
+    // if we have enum and num interactions.  These have the exact same filtering logic as the categoricals above
     int prev=j=0; // reset j for _numOffsets
-    if( _interactionVecs!=null ) {
-      while( i < cols.length && cols[i] < _numOffsets[intLvls.length]) {
-        int[] lvls = MemoryManager.malloc4(_numOffsets[j+1] - _numOffsets[j]);
-        int k=0; // same as above
-        while(i<cols.length && cols[i] < _numOffsets[j+1])
-          lvls[k++] = (cols[i++] - _numOffsets[j]); // no useAllFactorLevels offset since it's tucked away in the count already
-        if( k>0 )
-          intLvls[j] = Arrays.copyOf(lvls,k);
-        ++j;
+    boolean checkInteraction = false;
+    if( _interactionVecs!=null) {
+      for (j = 0; j < _interactionVecs.length; j++) {
+        if (_interactionVecs[j] >= _cats) {
+          checkInteraction = true;
+          prev = _interactionVecs.length-j; // only count interaction for enum by num, num by num
+          break;
+        }
       }
-      int preIgnoredCnt=ignoredCnt;
-      for(int k=0;k<intLvls.length;++k)
-        if( null==intLvls[k] ) { ignoredCols[ignoredCnt++] = k+_cats; }
-      if( ignoredCnt > preIgnoredCnt ) {  // got more ignored, trim out the nulls
-        int[][] is = new int[_interactionVecs.length - (ignoredCnt-preIgnoredCnt)][];
-        int y=0;
-        for (int[] intLvl : intLvls)
-          if (intLvl != null)
-            is[y++] = intLvl;
-        intLvls=is;
+      if (checkInteraction) {
+        j=0;  // index into _numOffsets directly, always start from 0 as numeric interaction columns always come first
+        while (i < cols.length && cols[i] < _numOffsets[intLvls.length]) {
+          int[] lvls = MemoryManager.malloc4(_numOffsets[j + 1] - _numOffsets[j]);
+          int k = 0; // same as above
+          while (i < cols.length && cols[i] < _numOffsets[j + 1])
+            lvls[k++] = (cols[i++] - _numOffsets[j]); // no useAllFactorLevels offset since it's tucked away in the count already
+          if (k > 0)
+            intLvls[j] = Arrays.copyOf(lvls, k);
+          ++j;
+        }
+        int preIgnoredCnt = ignoredCnt;
+        for (int k = 0; k < intLvls.length; ++k)
+          if (null == intLvls[k]) {
+            ignoredCols[ignoredCnt++] = k + _cats;
+          }
+        if (ignoredCnt > preIgnoredCnt) {  // got more ignored, trim out the nulls
+          int[][] is = new int[_interactionVecs.length - (ignoredCnt - preIgnoredCnt)][];
+          int y = 0;
+          for (int[] intLvl : intLvls)
+            if (intLvl != null)
+              is[y++] = intLvl;
+          intLvls = is;
+        }
       }
     }
+    
+    if (!checkInteraction)
+      prev=j=0;
 
-    // now numerics
-    prev=j=_interactionVecs==null?0:_interactionVecs.length;
+    // now numerics: excluding interaction columns
     for(;i<cols.length;++i){
       int numsToIgnore = (cols[i]-_numOffsets[j]);
       for(int k=0;k<numsToIgnore;++k){
@@ -534,6 +552,8 @@ public class DataInfo extends Keyed<DataInfo> {
         ++j;
       }
       prev = ++j;
+      if (j > _numOffsets.length)
+        break;
     }
     for(int k = prev; k < _nums; ++k)
       ignoredCols[ignoredCnt++] = k+_cats;
@@ -1108,14 +1128,23 @@ public class DataInfo extends Keyed<DataInfo> {
     row.nBins = nbins;
     final int n = _nums;
     int numValsIdx=0; // since we're dense, need a second index to track interaction nums
-    for( int i=0;i<n;i++) {
+    for( int i=0;i<n;i++) { // i refers to column index of chunk
       if( isInteractionVec(_cats + i) ) {  // categorical-categorical interaction is handled as plain categorical (above)... so if we have interactions either v1 is categorical, v2 is categorical, or neither are categorical
         InteractionWrappedVec iwv = (InteractionWrappedVec)_adaptedFrame.vec(_cats+i);
         int interactionOffset = getInteractionOffset(chunks,_cats+i,rid);
-        for(int offset=0;offset<iwv.expandedLength();++offset) {
+        int iwvExpLen = iwv.expandedLength(); // minor gain in speed
+        // Tricky situation here:
+        // number of numerical chunks = number of interaction columns plus normal predictors
+        // however, the row, _numNAFill, _numMean and others are : 
+        //  for enum by num interactions: total enum levels of all enum by num interaction columns
+        //  for num by num interactions: 1 per interaction column
+        //  normal predictor columns. 
+        // Hence the _numNAFill and _numMean and .... can exceed the numerical columns.  I need to be careful when I
+        // refer to the chunks and when I refer to the _numNAFill, _numMean, ....
+        for(int offset=0;offset<iwvExpLen;++offset) { // for enum x num, iwvExpLen > 1
           if( i < _intLvls.length && _intLvls[i]!=null && Arrays.binarySearch(_intLvls[i],offset) < 0 ) continue; // skip the filtered out interactions
           double d=0;
-          if( offset==interactionOffset ) d=chunks[_cats + i].atd(rid);
+          if( offset==interactionOffset ) d=chunks[_cats + i].atd(rid); // only read interaction column with correct enum offset
           if( Double.isNaN(d) )
             d = _numNAFill[numValsIdx];
           if( _normMul != null && _normSub != null )
@@ -1147,9 +1176,20 @@ public class DataInfo extends Keyed<DataInfo> {
   public int getInteractionOffset(Chunk[] chunks, int cid, int rid) {
     boolean useAllFactors = ((InteractionWrappedVec)chunks[cid].vec())._useAllFactorLevels;
     InteractionWrappedVec.InteractionWrappedChunk c = (InteractionWrappedVec.InteractionWrappedChunk)chunks[cid];
-    if(      c._c1IsCat ) return (int)c._c[0].at8(rid)-(useAllFactors?0:1);
-    else if( c._c2IsCat ) return (int)c._c[1].at8(rid)-(useAllFactors?0:1);
-    return 0;
+    if (c._c1IsCat) { // looking at enum by num or num by enum interaction here
+      if (!c._c[0].isNA(rid)) {
+        return (int)c._c[0].at8(rid)-(useAllFactors?0:1);
+      } else { // NA at c._c[0].at8(rid)
+        return (int)c._c[0].vec().mode()-(useAllFactors?0:1);
+      }
+    } else if (c._c2IsCat) {
+      if (!c._c[1].isNA(rid)) {
+        return (int)c._c[1].at8(rid)-(useAllFactors?0:1);
+      } else {
+        return (int)c._c[1].vec().mode()-(useAllFactors?0:1);
+      }
+    }
+    return 0; // looking at num by num interaction here
   }
   public Vec getWeightsVec(){return _adaptedFrame.vec(weightChunkId());}
   public Vec getOffsetVec(){return _adaptedFrame.vec(offsetChunkId());}
