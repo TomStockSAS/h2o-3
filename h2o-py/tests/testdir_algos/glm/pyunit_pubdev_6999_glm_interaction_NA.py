@@ -67,16 +67,6 @@ def interactions():
     performOneTest(pd_df_cat_num_NA, pd_df_cat_num, interactionColumn= ['numerical_feat', 'categorical_feat'], 
                      xcols=['numerical_feat', 'categorical_feat'])
      
-    # test interaction of num and num columns
-    print("******* Test interaction with num by num")
-    pd_df_num_num_NA = pd.DataFrame(np.array([[1,0,1,0], [1,2,2,4], [2, 3, float('NaN'), 1]]).T,
-                                columns=['label', 'numerical_feat', 'numerical_feat2'])
-    pd_df_num_num = pd.DataFrame(np.array([[1,0,1,0], [1,2,2,4], [2, 3, 2, 1]]).T,
-                                    columns=['label', 'numerical_feat', 'numerical_feat2'])
-    performOneTest(pd_df_num_num_NA, pd_df_num_num, interactionColumn= ['numerical_feat', 'numerical_feat2'],
-                   xcols=['numerical_feat', 'numerical_feat2'], standard=False)
-
-    
 def performOneTest(frameWithNA, frameWithoutNA, interactionColumn, xcols, standard=True):
     # default missing value handling = meanImputation
     h2o_df_NA = h2o.H2OFrame(frameWithNA, na_strings=["UNKNOWN"])
