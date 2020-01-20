@@ -436,7 +436,7 @@ public abstract class GLMTask  {
           }
         } else {
           c.getIntegers(ids, 0, c._len,-1);
-          for(int i = 0; i < ids.length; ++i){  // loop here is necessary because one enum read expands to all enum levels for beta
+          for(int i = 0; i < ids.length; ++i){  // loop here to go through all rows of the chunk
             int id = _dinfo.getCategoricalId(cid,ids[i]);
             if(id >=0) etas[i] += _beta[id];
           }
@@ -467,7 +467,7 @@ public abstract class GLMTask  {
     private final void computeNumericEtas(Chunk [] chks, double [] etas, double [] vals, int [] ids) {
       if (_dinfo._nums > 0) { // only do anything if there are numerical columns
         int numOff = _dinfo.numStart();
-        int trueNumcols = _dinfo._adaptedFrame.numCols()-_dinfo._cats;
+        int trueNumcols = _dinfo.numNums();
         for (int cid = 0; cid < trueNumcols; ++cid) {  // already taken care of expanding interaction column from enum x num
           double scale = _dinfo._normMul != null ? _dinfo._normMul[cid] : 1;
           double off = _dinfo._normSub != null ? _dinfo._normSub[cid] : 0;
@@ -494,7 +494,7 @@ public abstract class GLMTask  {
     private final void computeNumericGrads(Chunk [] chks, double [] etas, double [] vals, int [] ids) {
       if (_dinfo._nums > 0) {
         int numOff = _dinfo.numStart(); // index into expanded cols
-        int trueNumCols = _dinfo._adaptedFrame.numCols()-_dinfo._cats;
+        int trueNumCols = _dinfo.numNums();
         for (int cid = 0; cid < trueNumCols; ++cid) { // go through all numeric columns expanded with enum x num interaction
           double NA = _dinfo._numNAFill[cid];
           Chunk c = chks[cid + _dinfo._cats];

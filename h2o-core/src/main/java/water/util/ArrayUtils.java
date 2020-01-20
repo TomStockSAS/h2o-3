@@ -1625,7 +1625,7 @@ public class ArrayUtils {
     int [] res = new int[x.length-ids.length];
     int j = 0;
     for(int i = 0; i < x.length; ++i)
-      if(j == ids.length || i != ids[j]) res[i-j] = x[i]; else ++j;
+      if(j == ids.length || x[i] != ids[j]) res[i-j] = x[i]; else ++j;  // need to use x[i].  May not be contiguous
     return res;
   }
   public static double[] removeIds(double[] x, int[] ids) {

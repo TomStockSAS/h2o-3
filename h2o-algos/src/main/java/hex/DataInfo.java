@@ -503,14 +503,15 @@ public class DataInfo extends Keyed<DataInfo> {
     }
 
     // now do the interaction vecs -- this happens to always sit first in the "nums" section of _adaptedFrame
-    // if we have enum and num interactions.  These have the exact same filtering logic as the categoricals above
-    int prev=j=0; // reset j for _numOffsets
+    // if we have enum and num interaction or num and num interaction.  These have the exact same filtering logic
+    // as the categoricals above
+    int prev=j=0; // reset j to index into numerical columns both from interactions and from predictors
     boolean checkInteraction = false;
     if( _interactionVecs!=null) {
-      for (j = 0; j < _interactionVecs.length; j++) {
+      for (j = 0; j < _interactionVecs.length; j++) { // only count interaction for enum by num, num by num
         if (_interactionVecs[j] >= _cats) {
-          checkInteraction = true;
-          prev = _interactionVecs.length-j; // only count interaction for enum by num, num by num
+          checkInteraction = true;          // true if enum by num or num by num interactions are found
+          prev = _interactionVecs.length-j; // prev index into non interaction columns only which comes later
           break;
         }
       }
@@ -544,7 +545,7 @@ public class DataInfo extends Keyed<DataInfo> {
     if (!checkInteraction)
       prev=j=0;
 
-    // now numerics: excluding interaction columns
+    // now dealing with numerics: excluding interaction columns
     for(;i<cols.length;++i){
       int numsToIgnore = (cols[i]-_numOffsets[j]);
       for(int k=0;k<numsToIgnore;++k){
@@ -552,7 +553,7 @@ public class DataInfo extends Keyed<DataInfo> {
         ++j;
       }
       prev = ++j;
-      if (j > _numOffsets.length)
+      if (j >= _numOffsets.length)
         break;
     }
     for(int k = prev; k < _nums; ++k)
@@ -711,13 +712,39 @@ public class DataInfo extends Keyed<DataInfo> {
   public final int largestCat(){ return _cats > 0?_catOffsets[1]:0; }
   public final int numStart()  { return _catOffsets[_cats];         }
   public final int numCats()   { return _catOffsets[_cats];         }
-  public final int numNums()   {
+  public final int numNums()   {  // _num only counts the predictor columns and not take into account interaction columns
     int nnums=0;
-    if( _numOffsets==null && _intLvls.length>0 ) {  // filtered columns?
+/*    if( _numOffsets==null && _intLvls.length>0 ) {  // filtered columns?
       for (int[] _intLvl : _intLvls) nnums += _intLvl==null?0:_intLvl.length-1;  // minus 1 for the fact that we get a +1 from the dummy interaction vec sitting in the frame!
       return nnums+_nums;
+    }*/
+    if (_numOffsets==null && _interactionVecs!=null) {
+      for (int index=0; index < _interactionVecs.length; index++) {
+        if (_interactionVecs[index] >= _cats) {
+          nnums = _interactionVecs.length-index;
+          break;
+        }
+      }
+      return (_nums+nnums);
     }
-    return _interactionVecs!=null&&_numOffsets!=null?(_numOffsets[_numOffsets.length-1]-numStart()):_nums;
+    
+    if (_interactionVecs!=null && _numOffsets!=null) {
+      nnums = _numOffsets[_numOffsets.length-1]-numStart();
+      if (nnums >= _numOffsets.length) 
+        return nnums;
+        else
+          return (nnums+1);
+    }  /*else if (_interactionVecs != null && _numOffsets==null) {
+      for (int index=0; index < _interactionVecs.length; index++) {
+        if (_interactionVecs[index] >= numStart()) {
+          nnums = _interactionVecs.length-index;
+          break;
+        }
+      }
+      return (_nums+nnums);
+    }*/ else
+      return _nums;
+ //   return _interactionVecs!=null&&_numOffsets!=null?(_numOffsets[_numOffsets.length-1]-numStart()+1):_nums;
   }
 
   /**
@@ -1134,13 +1161,13 @@ public class DataInfo extends Keyed<DataInfo> {
         int interactionOffset = getInteractionOffset(chunks,_cats+i,rid);
         int iwvExpLen = iwv.expandedLength(); // minor gain in speed
         // Tricky situation here:
-        // number of numerical chunks = number of interaction columns plus normal predictors
-        // however, the row, _numNAFill, _numMean and others are : 
+        // _dinfo._num = number of interaction columns plus normal predictors
+        // however, real number of numerical columns in _dinfo._adaptedFrame are : 
         //  for enum by num interactions: total enum levels of all enum by num interaction columns
         //  for num by num interactions: 1 per interaction column
         //  normal predictor columns. 
-        // Hence the _numNAFill and _numMean and .... can exceed the numerical columns.  I need to be careful when I
-        // refer to the chunks and when I refer to the _numNAFill, _numMean, ....
+        // Hence the _numNAFill and _numMean and .... can exceed the _dinfo._num.  I need to be careful when I
+        // refer to the chunks, _numNAFill, _numMean using just _dinfo._num!
         for(int offset=0;offset<iwvExpLen;++offset) { // for enum x num, iwvExpLen > 1
           if( i < _intLvls.length && _intLvls[i]!=null && Arrays.binarySearch(_intLvls[i],offset) < 0 ) continue; // skip the filtered out interactions
           double d=0;
@@ -1189,7 +1216,7 @@ public class DataInfo extends Keyed<DataInfo> {
         return (int)c._c[1].vec().mode()-(useAllFactors?0:1);
       }
     }
-    return 0; // looking at num by num interaction here
+    return 0; // no offset for num by num interaction column
   }
   public Vec getWeightsVec(){return _adaptedFrame.vec(weightChunkId());}
   public Vec getOffsetVec(){return _adaptedFrame.vec(offsetChunkId());}

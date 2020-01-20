@@ -12,6 +12,15 @@ import numpy as np
 # test missing_value handling for interactions.  This test is derived from Brian Scannell's code.  Thank you.
 #  I have tested all three kinds of interactions with validation frame just to make sure my fix works properly.
 def interactions():
+    # test interaction of num and num columns
+    print("******* Test interaction with num by num")
+    pd_df_num_num_NA = pd.DataFrame(np.array([[1,0,1,0], [1,2,2,4], [2, 3, float('NaN'), 1]]).T,
+                                    columns=['label', 'numerical_feat', 'numerical_feat2'])
+    pd_df_num_num = pd.DataFrame(np.array([[1,0,1,0], [1,2,2,4], [2, 3, 2, 1]]).T,
+                                 columns=['label', 'numerical_feat', 'numerical_feat2'])
+    performOneTest(pd_df_num_num_NA, pd_df_num_num, interactionColumn= ['numerical_feat', 'numerical_feat2'],
+                   xcols=['numerical_feat', 'numerical_feat2'], standard=False)
+    
     # test multiple interactions enum by enum, enum by num and num by num all with NA terms
     print("******* Test interaction pairs")
     pd_df_NA = pd.DataFrame(np.array([[1,0,1,0,1,0], [1,2,4.2/2.2,4,3,1], [2,3,float('NaN'),1,2,3],
@@ -39,15 +48,6 @@ def interactions():
     model.train(x=xcols, y='label', training_frame=h2o_df)
     assert_arrays_equal_NA(modelNA._model_json['output']['coefficients_table'].cell_values,
                            model._model_json['output']['coefficients_table'].cell_values)
-    
-    # test interaction of num and num columns
-    print("******* Test interaction with num by num")
-    pd_df_num_num_NA = pd.DataFrame(np.array([[1,0,1,0], [1,2,2,4], [2, 3, float('NaN'), 1]]).T,
-                                    columns=['label', 'numerical_feat', 'numerical_feat2'])
-    pd_df_num_num = pd.DataFrame(np.array([[1,0,1,0], [1,2,2,4], [2, 3, 2, 1]]).T,
-                                 columns=['label', 'numerical_feat', 'numerical_feat2'])
-    performOneTest(pd_df_num_num_NA, pd_df_num_num, interactionColumn= ['numerical_feat', 'numerical_feat2'],
-                   xcols=['numerical_feat', 'numerical_feat2'], standard=False)
     
     # test interaction of enum and enum columns
     print("******* Test interaction with enum by enum")
@@ -99,8 +99,6 @@ def assert_arrays_equal_NA(coef_m_NA_dict, coef_m):
         coefNAIndex=coefNAIndex+1
     
 if __name__ == "__main__":
-#  h2o.init(ip="127.0.0.1", port=54321, strict_version_check=False)
   pyunit_utils.standalone_test(interactions)
 else:
-#  h2o.init(ip="127.0.0.1", port=54321, strict_version_check=False)
   interactions()
