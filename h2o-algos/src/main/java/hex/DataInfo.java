@@ -712,8 +712,27 @@ public class DataInfo extends Keyed<DataInfo> {
   public final int largestCat(){ return _cats > 0?_catOffsets[1]:0; }
   public final int numStart()  { return _catOffsets[_cats];         }
   public final int numCats()   { return _catOffsets[_cats];         }
+
+  /*** IMPORTANT
+   * numNums() may not equal to _nums.  This can be caused by the presence of enum and num interaction columns!
+   * 
+   * @return
+   */
   public final int numNums()   {  // _num only counts the predictor columns and not take into account interaction columns
     int nnums=0;
+    
+    if (_interactionVecs==null)  // no interaction column, just return _nums
+      return _nums;
+    
+    if (_numOffsets != null) {  // use _numOffsets to derive the number of numerical columns regardless of interaction or not
+      int numOff = _numOffsets.length-1;
+      for (int index=0; index < numOff; index++) {
+        nnums += _numOffsets[index+1]-_numOffsets[index];
+      }
+      return nnums;
+    }
+    
+    
 /*    if( _numOffsets==null && _intLvls.length>0 ) {  // filtered columns?
       for (int[] _intLvl : _intLvls) nnums += _intLvl==null?0:_intLvl.length-1;  // minus 1 for the fact that we get a +1 from the dummy interaction vec sitting in the frame!
       return nnums+_nums;
@@ -726,25 +745,8 @@ public class DataInfo extends Keyed<DataInfo> {
         }
       }
       return (_nums+nnums);
-    }
-    
-    if (_interactionVecs!=null && _numOffsets!=null) {
-      nnums = _numOffsets[_numOffsets.length-1]-numStart();
-      if (nnums >= _numOffsets.length) 
-        return nnums;
-        else
-          return (nnums+1);
-    }  /*else if (_interactionVecs != null && _numOffsets==null) {
-      for (int index=0; index < _interactionVecs.length; index++) {
-        if (_interactionVecs[index] >= numStart()) {
-          nnums = _interactionVecs.length-index;
-          break;
-        }
-      }
-      return (_nums+nnums);
-    }*/ else
-      return _nums;
- //   return _interactionVecs!=null&&_numOffsets!=null?(_numOffsets[_numOffsets.length-1]-numStart()+1):_nums;
+    } 
+    return _nums; // return as default
   }
 
   /**

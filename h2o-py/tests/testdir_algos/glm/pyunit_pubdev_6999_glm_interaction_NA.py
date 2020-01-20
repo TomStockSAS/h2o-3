@@ -12,15 +12,6 @@ import numpy as np
 # test missing_value handling for interactions.  This test is derived from Brian Scannell's code.  Thank you.
 #  I have tested all three kinds of interactions with validation frame just to make sure my fix works properly.
 def interactions():
-    # test interaction of num and num columns
-    print("******* Test interaction with num by num")
-    pd_df_num_num_NA = pd.DataFrame(np.array([[1,0,1,0], [1,2,2,4], [2, 3, float('NaN'), 1]]).T,
-                                    columns=['label', 'numerical_feat', 'numerical_feat2'])
-    pd_df_num_num = pd.DataFrame(np.array([[1,0,1,0], [1,2,2,4], [2, 3, 2, 1]]).T,
-                                 columns=['label', 'numerical_feat', 'numerical_feat2'])
-    performOneTest(pd_df_num_num_NA, pd_df_num_num, interactionColumn= ['numerical_feat', 'numerical_feat2'],
-                   xcols=['numerical_feat', 'numerical_feat2'], standard=False)
-    
     # test multiple interactions enum by enum, enum by num and num by num all with NA terms
     print("******* Test interaction pairs")
     pd_df_NA = pd.DataFrame(np.array([[1,0,1,0,1,0], [1,2,4.2/2.2,4,3,1], [2,3,float('NaN'),1,2,3],
@@ -34,10 +25,10 @@ def interactions():
                                   'categorical_feat2'])
     h2o_df = h2o.H2OFrame(pd_df, na_strings=["UNKNOWN"])
 
-    interaction_pairs = [("numerical_feat", "categorical_feat2"),("numerical_feat", "numerical_feat2"),
+    interaction_pairs = [("numerical_feat", "numerical_feat2"), ("numerical_feat", "categorical_feat2"),
                          ("categorical_feat", "categorical_feat2")]
     xcols = ['numerical_feat','numerical_feat2','categorical_feat','categorical_feat2']
-    
+
     # build model with and without NA in Frame
     modelNA = H2OGeneralizedLinearEstimator(family = "Binomial", alpha=0, lambda_search=False,
                                             interaction_pairs=interaction_pairs, standardize=False)
@@ -48,7 +39,17 @@ def interactions():
     model.train(x=xcols, y='label', training_frame=h2o_df)
     assert_arrays_equal_NA(modelNA._model_json['output']['coefficients_table'].cell_values,
                            model._model_json['output']['coefficients_table'].cell_values)
-    
+
+
+    # test interaction of enum and num columns
+    print("******* Test interaction with enum by num")
+    pd_df_cat_num_NA = pd.DataFrame(np.array([[1,0,1,0], [1,2,3,4], ['Foo', 'UNKNOWN', 'Foo', 'Bar']]).T,
+                                    columns=['label', 'numerical_feat', 'categorical_feat'])
+    pd_df_cat_num = pd.DataFrame(np.array([[1,0,1,0], [1,2,3,4], ['Foo', 'Foo', 'Foo', 'Bar']]).T,
+                                 columns=['label', 'numerical_feat', 'categorical_feat'])
+    performOneTest(pd_df_cat_num_NA, pd_df_cat_num, interactionColumn= ['numerical_feat', 'categorical_feat'],
+                   xcols=['numerical_feat', 'categorical_feat'])
+        
     # test interaction of enum and enum columns
     print("******* Test interaction with enum by enum")
     pd_df_cat_cat_NA = pd.DataFrame(np.array([[1,0,1,0], ["a", "a", "b", "b"], ['Foo', 'UNKNOWN', 'Foo', 'Bar']]).T,
@@ -56,17 +57,18 @@ def interactions():
     pd_df_cat_cat = pd.DataFrame(np.array([[1,0,1,0], ["a", "a", "b", "b"], ['Foo', 'Foo', 'Foo', 'Bar']]).T,
                                  columns=['label', 'categorical_feat', 'categorical_feat2'])
     performOneTest(pd_df_cat_cat_NA, pd_df_cat_cat, interactionColumn= ['categorical_feat', 'categorical_feat2'],
-                 xcols=['categorical_feat', 'categorical_feat2'])
- 
-    # test interaction of enum and num columns
-    print("******* Test interaction with enum by num")
-    pd_df_cat_num_NA = pd.DataFrame(np.array([[1,0,1,0], [1,2,3,4], ['Foo', 'UNKNOWN', 'Foo', 'Bar']]).T,
-                      columns=['label', 'numerical_feat', 'categorical_feat'])
-    pd_df_cat_num = pd.DataFrame(np.array([[1,0,1,0], [1,2,3,4], ['Foo', 'Foo', 'Foo', 'Bar']]).T,
-                                  columns=['label', 'numerical_feat', 'categorical_feat'])
-    performOneTest(pd_df_cat_num_NA, pd_df_cat_num, interactionColumn= ['numerical_feat', 'categorical_feat'], 
-                     xcols=['numerical_feat', 'categorical_feat'])
-     
+                   xcols=['categorical_feat', 'categorical_feat2'])
+    
+    # test interaction of num and num columns
+    print("******* Test interaction with num by num")
+    pd_df_num_num_NA = pd.DataFrame(np.array([[1,0,1,0], [1,2,2,4], [2, 3, float('NaN'), 1]]).T,
+                                    columns=['label', 'numerical_feat', 'numerical_feat2'])
+    pd_df_num_num = pd.DataFrame(np.array([[1,0,1,0], [1,2,2,4], [2, 3, 2, 1]]).T,
+                                 columns=['label', 'numerical_feat', 'numerical_feat2'])
+    performOneTest(pd_df_num_num_NA, pd_df_num_num, interactionColumn= ['numerical_feat', 'numerical_feat2'],
+                   xcols=['numerical_feat', 'numerical_feat2'], standard=False)
+
+
 def performOneTest(frameWithNA, frameWithoutNA, interactionColumn, xcols, standard=True):
     # default missing value handling = meanImputation
     h2o_df_NA = h2o.H2OFrame(frameWithNA, na_strings=["UNKNOWN"])
