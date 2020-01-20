@@ -23,9 +23,8 @@ import water.util.Log;
 import water.util.SBPrintStream;
 
 import java.io.*;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Stream;
 
 import static hex.genmodel.algos.xgboost.XGBoostMojoModel.ObjectiveType;
 import static hex.tree.xgboost.XGBoost.makeDataInfo;
@@ -34,7 +33,8 @@ import static water.H2O.OptArgs.SYSTEM_PROP_PREFIX;
 public class XGBoostModel extends Model<XGBoostModel, XGBoostModel.XGBoostParameters, XGBoostOutput> 
         implements SharedTreeGraphConverter, Model.LeafNodeAssignment, Model.Contributions {
 
-  private static final String XGBOOST_VERBOSITY = H2O.OptArgs.SYSTEM_PROP_PREFIX + ".xgboost.verbosity";
+  private static final String PROP_VERBOSITY = H2O.OptArgs.SYSTEM_PROP_PREFIX + ".xgboost.verbosity";
+  private static final String PROP_NTHREAD = SYSTEM_PROP_PREFIX + "xgboost.nthread";
 
   private XGBoostModelInfo model_info;
 
@@ -281,8 +281,8 @@ public class XGBoostModel extends Model<XGBoostModel, XGBoostModel.XGBoostParame
       params.put("eta", p._learn_rate);
     }
     params.put("max_depth", p._max_depth);
-    if (System.getProperty(XGBOOST_VERBOSITY) != null) {
-      params.put("verbosity", System.getProperty(XGBOOST_VERBOSITY));
+    if (System.getProperty(PROP_VERBOSITY) != null) {
+      params.put("verbosity", System.getProperty(PROP_VERBOSITY));
     } else {
       params.put("silent", p._quiet_mode);
     }
@@ -401,7 +401,7 @@ public class XGBoostModel extends Model<XGBoostModel, XGBoostModel.XGBoostParame
     final int nthread = p._nthread != -1 ? Math.min(p._nthread, nthreadMax) : nthreadMax;
     if (nthread < p._nthread) {
       Log.warn("Requested nthread=" + p._nthread + " but the cluster has only " + nthreadMax + " available." +
-              "Training will use nthread=" + nthreadMax + " instead of the user specified value.");
+              "Training will use nthread=" + nthread + " instead of the user specified value.");
     }
     params.put("nthread", nthread);
 
@@ -447,7 +447,24 @@ public class XGBoostModel extends Model<XGBoostModel, XGBoostModel.XGBoostParame
   }
   
   private static int getMaxNThread() {
-    return Integer.getInteger(SYSTEM_PROP_PREFIX + "xgboost.nthread", H2O.ARGS.nthreads);
+    if (System.getProperty(PROP_NTHREAD) != null) {
+      return Integer.getInteger(System.getProperty(PROP_NTHREAD));
+    } else {
+      int maxNodesPerHost = 1;
+      Set<String> checkedNodes = new HashSet<>();
+      for (H2ONode node : H2O.CLOUD.members()) {
+        String nodeHost = node.getIpHostString();
+        if (!checkedNodes.contains(nodeHost)) {
+          checkedNodes.add(nodeHost);
+          long cnt = Stream.of(H2O.CLOUD.members()).filter(h -> h.getIpHostString().equals(nodeHost)).count();
+          if (cnt > maxNodesPerHost) {
+            maxNodesPerHost = (int) cnt;
+          }
+        }
+      }
+      int maxThreads = H2O.ARGS.nthreads;
+      return Math.max(1, maxThreads / maxNodesPerHost);
+    }
   }
 
   @Override protected AutoBuffer writeAll_impl(AutoBuffer ab) {
