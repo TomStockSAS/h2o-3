@@ -34,6 +34,8 @@ import static water.H2O.OptArgs.SYSTEM_PROP_PREFIX;
 public class XGBoostModel extends Model<XGBoostModel, XGBoostModel.XGBoostParameters, XGBoostOutput> 
         implements SharedTreeGraphConverter, Model.LeafNodeAssignment, Model.Contributions {
 
+  private static final String XGBOOST_VERBOSITY = H2O.OptArgs.SYSTEM_PROP_PREFIX + ".xgboost.verbosity";
+
   private XGBoostModelInfo model_info;
 
   public XGBoostModelInfo model_info() { return model_info; }
@@ -279,7 +281,12 @@ public class XGBoostModel extends Model<XGBoostModel, XGBoostModel.XGBoostParame
       params.put("eta", p._learn_rate);
     }
     params.put("max_depth", p._max_depth);
-    params.put("silent", p._quiet_mode);
+    if (System.getProperty(XGBOOST_VERBOSITY) != null) {
+      params.put("verbosity", System.getProperty(XGBOOST_VERBOSITY));
+    } else {
+      params.put("silent", p._quiet_mode);
+    }
+    params.put("verbosity", "3");
     if (p._subsample!=1.0) {
       Log.info("Using user-provided parameter subsample instead of sample_rate.");
       params.put("subsample", p._subsample);
