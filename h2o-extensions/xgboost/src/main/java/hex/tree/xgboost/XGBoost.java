@@ -355,6 +355,7 @@ public class XGBoost extends ModelBuilder<XGBoostModel,XGBoostModel.XGBoostParam
           setupTask = null;
 
           waitOnRabitWorkers(rt);
+          Log.info("done waitOnRabitWorkers");
         } finally {
           stopRabitTracker(rt);
         }
@@ -477,6 +478,7 @@ public class XGBoost extends ModelBuilder<XGBoostModel,XGBoostModel.XGBoostParam
      */
     private void stopRabitTracker(RabitTrackerH2O rt) {
       if(H2O.CLOUD.size() > 1) {
+        Log.info("Stopping Rabit tracker.");
         rt.stop();
       }
     }
