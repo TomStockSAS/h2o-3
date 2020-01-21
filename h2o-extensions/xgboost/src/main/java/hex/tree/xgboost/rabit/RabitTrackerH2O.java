@@ -200,6 +200,7 @@ public class RabitTrackerH2O implements IRabitTracker {
                     }
                 } catch (IOException e) {
                     Log.err("Exception in Rabit tracker.", e);
+                    Log.err(e);
                 }
             }
             Log.debug("All Rabit nodes finished.");
