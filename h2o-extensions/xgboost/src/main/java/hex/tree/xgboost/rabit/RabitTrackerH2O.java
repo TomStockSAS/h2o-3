@@ -220,6 +220,8 @@ public class RabitTrackerH2O implements IRabitTracker {
 
     @Override
     public void uncaughtException(Thread t, Throwable e) {
+        Log.err("Uncaught exception occurred on Rabit tracker thread " + t.getName(), e);
+        Log.err(e);
         stop();
     }
 }
